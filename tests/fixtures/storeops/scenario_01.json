@@ -1,0 +1,23 @@
+{
+  "name": "product_copy_low_risk",
+  "expect_confirmation": false,
+  "action": {
+    "action_id": "action-01",
+    "action_type": "product_copy_update",
+    "title": "Improve product copy",
+    "summary": "Refresh a weak title and description.",
+    "impact_score": 4,
+    "risk_score": 2,
+    "confidence_score": 4,
+    "target_ids": ["101"],
+    "params": {
+      "products": [
+        {
+          "product_id": "101",
+          "current_name": "Basic Tee",
+          "current_description": "<p>Short</p>"
+        }
+      ]
+    }
+  }
+}

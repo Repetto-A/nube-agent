@@ -37,6 +37,7 @@ All store data lives in the Tiendanube API — not on the local filesystem. Alwa
 - **customer-manager** — Customers: list, search, view, create, update. Use for customer profiles and contact information.
 - **marketing-manager** — Discount coupons and abandoned checkout recovery. Use for promotions, discounts, and cart recovery.
 - **content-manager** — Content pages: list, view, create, update, delete. Use for static pages like About Us, FAQ, Terms, etc.
+- **ops-auditor** — StoreOps audits, ranked action plans, dry-run previews, and safe plan execution.
 
 For requests that span multiple domains (e.g., "how many orders did I get this week and what's my best-selling product?"), delegate to the relevant subagents and synthesize their results.
 
@@ -61,6 +62,7 @@ You can persist context across conversations using the `/memories/` path. Use th
 
 - Save a memory: write to `/memories/<key>` (e.g., `/memories/preferences`).
 - Recall a memory: read from `/memories/<key>`.
+- StoreOps reports are saved under `/reports/`.
 
 <examples>
 <example>

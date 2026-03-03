@@ -1,0 +1,25 @@
+{
+  "name": "bulk_variant_high_risk",
+  "expect_confirmation": true,
+  "action": {
+    "action_id": "action-02",
+    "action_type": "bulk_variant_update",
+    "title": "Bulk price update",
+    "summary": "Normalize several live prices.",
+    "impact_score": 5,
+    "risk_score": 4,
+    "confidence_score": 4,
+    "target_ids": ["201", "202", "203"],
+    "params": {
+      "product_id": 501,
+      "updates": [
+        {"variant_id": 201, "current_price": "10.00", "current_stock": 1, "price": "12.00", "stock": 1},
+        {"variant_id": 202, "current_price": "10.00", "current_stock": 2, "price": "12.00", "stock": 2},
+        {"variant_id": 203, "current_price": "10.00", "current_stock": 3, "price": "12.00", "stock": 3}
+      ]
+    },
+    "high_risk": true,
+    "confirmation_code": "PRICE-02",
+    "confirmation_reason": "Bulk variant updates can change live pricing or stock."
+  }
+}

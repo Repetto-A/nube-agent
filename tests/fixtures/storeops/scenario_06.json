@@ -1,0 +1,20 @@
+{
+  "name": "page_update",
+  "expect_confirmation": false,
+  "action": {
+    "action_id": "action-06",
+    "action_type": "page_update",
+    "title": "Refresh FAQ",
+    "summary": "Update the store FAQ with payment and shipping guidance.",
+    "impact_score": 3,
+    "risk_score": 2,
+    "confidence_score": 3,
+    "target_ids": ["401"],
+    "params": {
+      "page_id": 401,
+      "title": "Shipping and order help",
+      "theme": "shipping times and payment issues",
+      "before": {"id": 401, "name": "FAQ"}
+    }
+  }
+}

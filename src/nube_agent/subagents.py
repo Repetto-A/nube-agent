@@ -1,3 +1,5 @@
+from nube_agent.storeops.tools.audits import get_latest_plan, run_store_audit
+from nube_agent.storeops.tools.execution import apply_plan, preview_plan_apply
 from nube_agent.tools.abandoned_checkouts import (
     get_abandoned_checkout,
     list_abandoned_checkouts,
@@ -208,5 +210,28 @@ SUBAGENTS = [
         ],
         "interrupt_on": {"delete_page": True},
         "skills": ["skills/page-management/", "skills/troubleshooting/"],
+    },
+    {
+        "name": "ops-auditor",
+        "description": (
+            "Runs StoreOps audits, prepares ranked action plans, previews dry-run diffs, "
+            "and coordinates safe plan execution."
+        ),
+        "system_prompt": (
+            f"You are the StoreOps ops-auditor for a Tiendanube store.\n{_PLAIN_TEXT_RULES}\n\n"
+            "Key rules:\n"
+            "- Build audit findings from API evidence, not guesses.\n"
+            "- No destructive or high-risk action without approval.\n"
+            "- Dry-run previews must never mutate the API.\n"
+            "- Bulk or high-risk actions require a typed confirmation code handled by the CLI.\n"
+            "- Save reports under /reports and summary memory under /memories/storeops.\n"
+        ),
+        "tools": [
+            run_store_audit,
+            get_latest_plan,
+            preview_plan_apply,
+            apply_plan,
+        ],
+        "skills": ["skills/troubleshooting/"],
     },
 ]

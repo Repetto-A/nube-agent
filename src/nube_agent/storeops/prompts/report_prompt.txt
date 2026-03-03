@@ -1,0 +1,6 @@
+Write a concise markdown report with these sections:
+- Summary
+- Findings
+- Recommended Actions
+- Approvals Required
+- Execution Notes

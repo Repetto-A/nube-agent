@@ -7,15 +7,22 @@ import sys
 import threading
 import time
 import uuid
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
 from langchain_core.messages import AIMessageChunk, ToolMessage
 from langgraph.types import Command
 
 from nube_agent.agent import build_agent
-from nube_agent.config import MODEL, validate
+from nube_agent.api import store_language
+from nube_agent.config import MODEL, TIENDANUBE_STORE_ID, validate
+from nube_agent.storeops.audit_runner import apply_saved_plan, preview_saved_plan, run_audit
+from nube_agent.storeops.memory import load_latest_plan, load_plan
+from nube_agent.storeops.models import ActionPlan, ApplyResult, AuditRequest, StructuredDiff
 
-VERSION = version("nube-agent")
+try:
+    VERSION = version("nube-agent")
+except PackageNotFoundError:
+    VERSION = "0.1.0"
 
 BLUE = "\033[38;2;2;156;220m"
 DARK = "\033[38;2;44;51;87m"
@@ -114,6 +121,10 @@ def print_banner(store_name: str, store_domain: str, store_currency: str) -> Non
     print(box_line(f"  {BLUE}Commands{RESET}", w))
     commands = [
         ("/store", "Show store info"),
+        ("/audit", "Run StoreOps audit"),
+        ("/plan", "Show latest plan"),
+        ("/dry-run", "Preview diffs"),
+        ("/apply <id>", "Apply a plan"),
         ("/products", "List products"),
         ("/orders", "List orders"),
         ("/customers", "List customers"),
@@ -138,6 +149,10 @@ def print_help() -> None:
     print(f"{BLUE}{'─' * 40}{RESET}")
     commands = [
         ("/store", "Show store information"),
+        ("/audit", "Run a StoreOps audit"),
+        ("/plan", "Show the latest saved StoreOps plan"),
+        ("/dry-run [plan_id]", "Preview plan changes without mutations"),
+        ("/apply <plan_id>", "Apply a saved StoreOps plan"),
         ("/products", "List all products"),
         ("/orders", "List recent orders"),
         ("/customers", "List recent customers"),
@@ -171,6 +186,7 @@ def fetch_store_summary() -> tuple[str, str, str]:
     """Fetch store name, domain, and currency for the banner."""
     try:
         from nube_agent.api import request, store_language
+
         result = request("GET", "/store")
         if isinstance(result, dict):
             lang = store_language()
@@ -199,7 +215,7 @@ def handle_slash(user_input: str) -> str | None:
     """Handle slash commands. Returns a prompt to send to the agent,
     or None if the command was handled locally."""
     cmd = user_input.split()[0].lower()
-    args = user_input[len(cmd):].strip()
+    args = user_input[len(cmd) :].strip()
 
     if cmd in ("/exit", "/quit"):
         return "__EXIT__"
@@ -221,6 +237,158 @@ def handle_slash(user_input: str) -> str | None:
 
     print(f"  {DIM}Unknown command: {cmd}. Type /help for available commands.{RESET}")
     return None
+
+
+def _print_storeops_plan(plan: ActionPlan) -> None:
+    print(f"\n{BLUE}{BOLD}StoreOps Plan{RESET}")
+    print(f"  Plan ID:    {WHITE}{plan.plan_id}{RESET}")
+    print(f"  Audit ID:   {DIM}{plan.audit_id}{RESET}")
+    print(f"  Report:     {DIM}{plan.report_path}{RESET}")
+    print(f"  Summary:    {plan.summary}")
+
+    print(f"\n{BLUE}{BOLD}Findings{RESET}")
+    if not plan.findings:
+        print(f"  {DIM}No issues found.{RESET}")
+    for idx, finding in enumerate(plan.findings, start=1):
+        print(
+            f"  {idx}. {WHITE}{finding.title}{RESET} "
+            f"{DIM}[impact={finding.impact_score} "
+            f"risk={finding.risk_score} "
+            f"confidence={finding.confidence_score}]{RESET}"
+        )
+        print(f"     {finding.summary}")
+
+    print(f"\n{BLUE}{BOLD}Actions{RESET}")
+    if not plan.actions:
+        print(f"  {DIM}No actions proposed.{RESET}")
+    for idx, action in enumerate(plan.actions, start=1):
+        risk_label = "high-risk" if action.high_risk else "approved flow"
+        print(
+            f"  {idx}. {WHITE}{action.title}{RESET} "
+            f"{DIM}[{action.action_type} | {risk_label}]{RESET}"
+        )
+        print(f"     ID: {action.action_id}")
+        print(f"     {action.summary}")
+        if action.confirmation_code:
+            print(f"     Confirmation code: {YELLOW}{action.confirmation_code}{RESET}")
+
+
+def _print_storeops_diffs(diffs: list[StructuredDiff]) -> None:
+    print(f"\n{BLUE}{BOLD}Diff Preview{RESET}")
+    if not diffs:
+        print(f"  {DIM}No diffs generated.{RESET}")
+        return
+    for idx, diff in enumerate(diffs, start=1):
+        print(f"  {idx}. {WHITE}{diff.target_type}{RESET} {diff.target_id}")
+        print(f"     {diff.summary}")
+        if diff.before:
+            print(f"     Before: {DIM}{json.dumps(diff.before, ensure_ascii=False)}{RESET}")
+        if diff.after:
+            print(f"     After:  {json.dumps(diff.after, ensure_ascii=False)}")
+
+
+def _print_apply_result(result: ApplyResult) -> None:
+    print(f"\n{BLUE}{BOLD}Apply Result{RESET}")
+    print(f"  Plan ID: {WHITE}{result.plan_id}{RESET}")
+    print(f"  Mode:    {DIM}{'dry_run' if result.dry_run else 'execute'}{RESET}")
+    print(f"  {result.message}")
+    if result.executed_actions:
+        print(f"  Executed: {', '.join(result.executed_actions)}")
+    if result.blocked_actions:
+        print(f"  Blocked:  {', '.join(result.blocked_actions)}")
+    for decision in result.decisions:
+        print(f"  - {decision.action_id}: {decision.decision} {decision.reason}")
+    if result.diffs:
+        _print_storeops_diffs(result.diffs)
+
+
+def _prompt_storeops_approvals(plan: ActionPlan) -> tuple[set[str], dict[str, str]]:
+    approved: set[str] = set()
+    confirmation_codes: dict[str, str] = {}
+    for action in plan.actions:
+        print(f"\n  {WHITE}{action.title}{RESET}")
+        print(f"    {DIM}{action.summary}{RESET}")
+        try:
+            answer = input(f"  {YELLOW}Approve this action? (y)es / (n)o: {RESET}").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            answer = "n"
+        if answer not in ("y", "yes", "s", "si"):
+            continue
+        approved.add(action.action_id)
+        if action.confirmation_code:
+            try:
+                typed = input(
+                    f"  {YELLOW}Type confirmation code {action.confirmation_code}: {RESET}"
+                ).strip()
+            except (KeyboardInterrupt, EOFError):
+                typed = ""
+            confirmation_codes[action.action_id] = typed
+    return approved, confirmation_codes
+
+
+def handle_storeops_command(user_input: str, *, thread_id: str) -> bool:
+    cmd = user_input.split()[0].lower()
+    args = user_input[len(cmd) :].strip()
+
+    try:
+        if cmd == "/audit":
+            spinner = Spinner("Running StoreOps audit")
+            spinner.start()
+            result = run_audit(
+                AuditRequest(
+                    store_id=TIENDANUBE_STORE_ID,
+                    dry_run=True,
+                    language=store_language(),
+                    thread_id=thread_id,
+                )
+            )
+            spinner.stop()
+            _print_storeops_plan(result.plan)
+            print(f"\n  Report saved to {DIM}{result.report_path}{RESET}")
+            return True
+
+        if cmd == "/plan":
+            plan = load_latest_plan()
+            _print_storeops_plan(plan)
+            return True
+
+        if cmd == "/dry-run":
+            spinner = Spinner("Previewing StoreOps plan")
+            spinner.start()
+            result = preview_saved_plan(args or None)
+            spinner.stop()
+            plan = load_latest_plan() if not args or args == "latest" else load_plan(args)
+            _print_storeops_plan(plan)
+            _print_storeops_diffs(result.diffs)
+            return True
+
+        if cmd == "/apply":
+            if not args:
+                print(f"  {DIM}Usage: /apply <plan_id>{RESET}")
+                return True
+            plan = load_latest_plan() if args == "latest" else load_plan(args)
+            _print_storeops_plan(plan)
+            approved, confirmation_codes = _prompt_storeops_approvals(plan)
+            spinner = Spinner("Applying StoreOps plan")
+            spinner.start()
+            result = apply_saved_plan(
+                plan.plan_id,
+                dry_run=False,
+                confirmation_codes=confirmation_codes,
+                approved_action_ids=approved,
+            )
+            spinner.stop()
+            _print_apply_result(result)
+            return True
+    except FileNotFoundError as exc:
+        print(f"  {RED}{exc}{RESET}")
+        return True
+    except Exception as exc:
+        print(f"  {RED}StoreOps error: {exc}{RESET}")
+        return True
+
+    return False
+
 
 def stream_response(agent, input_value, config, *, debug=False):
     """Stream agent response chunks to stdout.
@@ -303,6 +471,7 @@ def stream_response(agent, input_value, config, *, debug=False):
         spinner.stop()
         if debug:
             import traceback
+
             print(f"\n  {RED}Error: {e}{RESET}")
             traceback.print_exc()
         else:
@@ -325,19 +494,19 @@ def _prompt_decisions(action_requests):
                 print(f"    {DIM}{line}{RESET}")
 
         try:
-            answer = input(
-                f"  {YELLOW}Approve? (y)es / (n)o: {RESET}"
-            ).strip().lower()
+            answer = input(f"  {YELLOW}Approve? (y)es / (n)o: {RESET}").strip().lower()
         except (KeyboardInterrupt, EOFError):
             answer = "n"
 
         if answer in ("y", "yes", "s", "si"):
             decisions.append({"type": "approve"})
         else:
-            decisions.append({
-                "type": "reject",
-                "message": "User rejected this action.",
-            })
+            decisions.append(
+                {
+                    "type": "reject",
+                    "message": "User rejected this action.",
+                }
+            )
     return decisions
 
 
@@ -418,6 +587,10 @@ def main() -> None:
             break
 
         if not user_input:
+            continue
+
+        if user_input.startswith("/") and handle_storeops_command(user_input, thread_id=thread_id):
+            print()
             continue
 
         # Handle slash commands

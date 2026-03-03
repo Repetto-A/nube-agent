@@ -1,0 +1,19 @@
+{
+  "name": "coupon_low_risk",
+  "expect_confirmation": false,
+  "action": {
+    "action_id": "action-05",
+    "action_type": "coupon_update",
+    "title": "Fix limited coupon",
+    "summary": "Adjust an existing targeted coupon.",
+    "impact_score": 3,
+    "risk_score": 2,
+    "confidence_score": 4,
+    "target_ids": ["302"],
+    "params": {
+      "coupon_id": 302,
+      "before": {"id": 302, "code": "VIP", "type": "absolute", "value": "10", "products": [11]},
+      "after": {"id": 302, "code": "VIP", "type": "absolute", "value": "10", "products": [11], "max_uses": 25}
+    }
+  }
+}

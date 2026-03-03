@@ -1,0 +1,22 @@
+{
+  "name": "coupon_high_risk",
+  "expect_confirmation": true,
+  "action": {
+    "action_id": "action-04",
+    "action_type": "coupon_update",
+    "title": "Tighten broad coupon",
+    "summary": "Add expiry and max uses.",
+    "impact_score": 4,
+    "risk_score": 4,
+    "confidence_score": 4,
+    "target_ids": ["301"],
+    "params": {
+      "coupon_id": 301,
+      "before": {"id": 301, "code": "SALE", "type": "percentage", "value": "20"},
+      "after": {"id": 301, "code": "SALE", "type": "percentage", "value": "20", "end_date": "2026-03-10T00:00:00+00:00", "max_uses": 100}
+    },
+    "high_risk": true,
+    "confirmation_code": "COUPON-04",
+    "confirmation_reason": "This coupon change affects a broad promotion."
+  }
+}

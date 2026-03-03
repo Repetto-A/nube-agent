@@ -1,0 +1,20 @@
+{
+  "name": "product_copy_batch",
+  "expect_confirmation": false,
+  "action": {
+    "action_id": "action-08",
+    "action_type": "product_copy_update",
+    "title": "Improve several products",
+    "summary": "Refresh copy for multiple weak listings.",
+    "impact_score": 4,
+    "risk_score": 2,
+    "confidence_score": 4,
+    "target_ids": ["102", "103"],
+    "params": {
+      "products": [
+        {"product_id": "102", "current_name": "Cap", "current_description": ""},
+        {"product_id": "103", "current_name": "Bag", "current_description": "<p>Basic bag</p>"}
+      ]
+    }
+  }
+}
