@@ -1,162 +1,132 @@
-# Nube Agent
+# StoreOps Copilot Demo
 
-CLI conversational agent for managing [Nuvemshop/Tiendanube](https://www.tiendanube.com/) online stores using natural language.
+This branch showcases a StoreOps Copilot prototype built on top of the `nube-agent` CLI for Tiendanube / Nuvemshop stores.
 
-![Nube Agent](./nube-agent.png)
+It focuses on a concrete engineering problem: how should an AI agent help improve store operations without turning execution into an opaque or unsafe automation layer?
 
-> **Disclaimer:** This is NOT an official Nuvemshop/Tiendanube product. It is an independent project that uses the public Tiendanube API.
+The prototype emphasizes structured audits, reviewable plans, dry-run safety, and explicit approval before risky actions.
 
-## Features
+## Overview
 
-- **43 tools** across 10 domains: products, categories, variants, images, orders, customers, coupons, abandoned checkouts, pages, and store info
-- **5 specialized sub-agents** that handle domain-specific tasks (catalog, orders, customers, marketing, content)
-- **Human-in-the-loop** confirmation for destructive actions (delete, cancel)
-- **Long-term memory** to persist preferences and context across conversations
-- **8 skills** with structured API documentation for each domain
-- **Streaming output** with real-time response rendering
-- **Slash commands** for quick access to common operations
-- **Debug mode** to inspect tool calls and arguments
+The StoreOps layer extends the original agent with an operational workflow that inspects store state, produces structured actions, previews changes safely, and requires approval before risky execution.
 
-## Requirements
+Core workflow:
 
-- Python 3.11+
-- Tiendanube API access token ([get one here](https://partners.nuvemshop.com.br/))
-- OpenAI API key
+`audit -> plan -> dry-run -> approval -> execution`
 
-## Installation
+## Key Capabilities
 
-```bash
-git clone https://github.com/your-user/nube-agent.git
-cd nube-agent
-pip install -e .
+- Runs store audits across catalog, marketing, and order workflows
+- Produces ranked action plans with explicit impact and risk signals
+- Supports dry-run previews before execution
+- Blocks mutating HTTP calls during dry-run mode with a request-boundary mutation firewall
+- Requires explicit approval for destructive or high-risk actions
+- Persists reports and StoreOps memory in a local filesystem-backed workspace
+- Includes automated tests and local evals for core safety behavior
+
+## Architecture Overview
+
+```text
+User / CLI
+  |
+  +-- /audit ---------> StoreOps audit runner
+  |                      |
+  |                      +-- collect API snapshot
+  |                      +-- run deterministic checks
+  |                      +-- rank findings and actions
+  |                      +-- save report + plan memory
+  |
+  +-- /plan ----------> load latest saved plan
+  +-- /dry-run -------> preview diffs only
+  +-- /apply <plan> --> approval flow + guarded execution
+  |
+  +-- natural language -> main agent + domain subagents
 ```
 
-For development (tests + linting):
+## Safety Model
 
-```bash
-pip install -e ".[dev]"
-```
+The prototype uses layered safeguards rather than relying on a single confirmation step.
 
-## Configuration
+- Destructive actions remain gated through human-in-the-loop interruptions
+- High-risk actions require explicit approval
+- High-risk bulk actions require a typed confirmation code
+- Dry-run mode is enforced at the HTTP boundary, so mutating methods cannot be sent accidentally
+- Policy checks run before execution
+- Local evals check dry-run purity and policy compliance
 
-Copy the example environment file and fill in your credentials:
-
-```bash
-cp .env.example .env
-```
-
-Required variables:
-
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | Your OpenAI API key |
-| `TIENDANUBE_ACCESS_TOKEN` | Tiendanube API access token |
-| `TIENDANUBE_STORE_ID` | Your store's numeric ID |
-
-## Usage
+## Key Commands
 
 ```bash
 nube-agent
 ```
 
-Start with debug mode:
+Inside the CLI:
+
+- `/audit` runs a StoreOps audit and saves a plan
+- `/plan` shows the latest saved plan
+- `/dry-run` previews the planned diffs without mutation
+- `/apply <plan_id>` executes approved actions
+- `/debug` toggles tool-call visibility
+
+## Quickstart
+
+Install:
 
 ```bash
-nube-agent --debug
+pip install -e ".[dev]"
 ```
 
-### Slash Commands
-
-| Command | Description |
-|---------|-------------|
-| `/store` | Show store information |
-| `/products` | List all products |
-| `/orders` | List recent orders |
-| `/customers` | List recent customers |
-| `/coupons` | List discount coupons |
-| `/categories` | List all categories |
-| `/variants <id>` | List variants for a product |
-| `/abandoned` | List abandoned checkouts |
-| `/pages` | List content pages |
-| `/debug` | Toggle debug mode |
-| `/help` | Show all commands |
-| `/exit` | Exit the agent |
-
-Or just type naturally — the agent understands free-form requests like "create a product called Boca Juniors t-shirt at $5000" or "show me unpaid orders from last week".
-
-## Available Tools
-
-| Domain | Tools | Count |
-|--------|-------|-------|
-| Store | get_store_info | 1 |
-| Products | list, get, create, update, delete | 5 |
-| Categories | list, get, create, update, delete | 5 |
-| Variants | list, get, create, update, delete, bulk_update_stock_price | 6 |
-| Images | list, add, update, delete | 4 |
-| Orders | list, get, update, close, open, cancel | 6 |
-| Customers | list, get, create, update | 4 |
-| Coupons | list, get, create, update, delete | 5 |
-| Abandoned Checkouts | list, get | 2 |
-| Pages | list, get, create, update, delete | 5 |
-
-## API Permissions
-
-Nube Agent requires your Tiendanube application to have the correct OAuth scopes for each domain it interacts with. If your app is missing scopes, some tools will return **403 Forbidden** errors.
-
-To update scopes:
-
-1. Go to **https://partners.tiendanube.com/applications/update/{app_id}** (replace `{app_id}` with your application ID)
-2. Enable the required scopes
-3. **Reinstall the app** on the store — updating scopes alone is not enough, the store must re-authorize for the new scopes to take effect
-
-## Architecture
-
-```
-User Input
-    │
-    ▼
-Main Agent (get_store_info + delegation)
-    │
-    ├─► catalog-manager   (products, categories, variants, images)
-    ├─► order-manager     (orders)
-    ├─► customer-manager  (customers)
-    ├─► marketing-manager (coupons, abandoned checkouts)
-    └─► content-manager   (pages)
-```
-
-- **Sub-agents**: Domain-specific agents handle tasks in their area of expertise
-- **Human-in-the-loop**: Destructive tools (delete_product, cancel_order, etc.) require user confirmation before execution
-- **Long-term memory**: The agent can persist notes and preferences to `/memories/` for cross-conversation context
-
-## Development
-
-Run tests:
+Configure:
 
 ```bash
-pytest
+cp .env.example .env
 ```
 
-Run linter:
+Required environment variables:
+
+- `OPENAI_API_KEY`
+- `TIENDANUBE_ACCESS_TOKEN`
+- `TIENDANUBE_STORE_ID`
+
+Run:
 
 ```bash
-ruff check src/ tests/
+nube-agent
 ```
 
-Run tests with coverage:
+## 3-Minute Demo Script
+
+1. Launch the CLI and explain that the project starts from a working Tiendanube agent rather than a greenfield toy app.
+2. Run `/audit` and describe the flow: snapshot collection, deterministic checks, ranked findings, and saved action plan.
+3. Run `/plan` to show that the audit output is persisted and reviewable.
+4. Run `/dry-run` to show structured diffs and explain that dry-run is protected by the mutation firewall at the request boundary.
+5. If useful, show `/apply <plan_id>` and explain that risky actions require explicit approval and confirmation codes.
+6. Close with the test and eval story: this is not just a UI demo, it has repeatable safety checks.
+
+## Validation
+
+Run the full test suite:
 
 ```bash
-pytest --cov=nube_agent
+pytest -q
 ```
 
-## Contributing
+Run lint:
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Make your changes
-4. Run tests and linting (`pytest && ruff check src/ tests/`)
-5. Commit and push
-6. Open a pull request
+```bash
+ruff check src tests
+```
 
-## License
+Run the local StoreOps evals:
 
-MIT
+```bash
+python -m nube_agent.storeops.evals
+```
+
+## Repository Focus
+
+This demo branch is intentionally curated for readability.
+
+- It keeps the full StoreOps prototype codepath
+- It removes internal planning noise and scratch artifacts
+- It is meant to be read as an engineering prototype, not as an AI-generated dump
