@@ -1,11 +1,33 @@
 import json
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 from typing import Any
 
 import httpx
 
 from nube_agent.config import BASE_URL, TIENDANUBE_ACCESS_TOKEN, USER_AGENT
+
+_MUTATION_FIREWALL: ContextVar[bool] = ContextVar("mutation_firewall", default=False)
+_MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+class MutationBlockedError(RuntimeError):
+    """Raised when a dry-run context attempts to hit a mutation endpoint."""
+
+
+def mutations_blocked() -> bool:
+    return _MUTATION_FIREWALL.get()
+
+
+@contextmanager
+def mutation_firewall(enabled: bool = True):
+    token = _MUTATION_FIREWALL.set(enabled)
+    try:
+        yield
+    finally:
+        _MUTATION_FIREWALL.reset(token)
 
 
 def _headers() -> dict[str, str]:
@@ -28,6 +50,12 @@ def request(
     Returns parsed JSON on success, or a descriptive error string on failure.
     Retries once on 429 (rate limited).
     """
+    method = method.upper()
+    if mutations_blocked() and method in _MUTATION_METHODS:
+        raise MutationBlockedError(
+            f"Dry-run mutation firewall blocked {method} {path}"
+        )
+
     url = f"{BASE_URL}{path}"
 
     for attempt in range(2):

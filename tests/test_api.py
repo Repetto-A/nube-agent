@@ -1,7 +1,8 @@
 import httpx
+import pytest
 import respx
 
-from nube_agent.api import parse_json, request, to_json
+from nube_agent.api import MutationBlockedError, mutation_firewall, parse_json, request, to_json
 from nube_agent.config import BASE_URL
 
 
@@ -85,3 +86,12 @@ class TestRequest:
         result = request("GET", "/products")
         assert isinstance(result, str)
         assert "HTTP error" in result
+
+    @respx.mock
+    def test_mutation_firewall_blocks_mutating_methods(self):
+        url = f"{BASE_URL}/products/1"
+        route = respx.put(url).respond(200, json={"id": 1})
+        with mutation_firewall():
+            with pytest.raises(MutationBlockedError):
+                request("PUT", "/products/1", json_body={"published": False})
+        assert route.call_count == 0
