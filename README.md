@@ -103,6 +103,44 @@ nube-agent
 5. If useful, show `/apply <plan_id>` and explain that risky actions require explicit approval and confirmation codes.
 6. Close with the test and eval story: this is not just a UI demo, it has repeatable safety checks.
 
+## Screenshots
+
+### CLI Home
+
+The CLI presents the StoreOps workflow directly in the product surface, including audit, plan, dry-run, and apply flows.
+
+![CLI home](docs/screenshots/01_cli_home.jpg)
+
+### Audit Output
+
+The audit generates a persisted plan with a real `plan_id`, `audit_id`, report path, findings, and recommended actions.
+
+![Audit output](docs/screenshots/02_audit.jpg)
+
+### Plan Reload
+
+The saved plan can be reloaded without recomputing the audit, which makes the workflow reviewable and repeatable.
+
+![Plan reload](docs/screenshots/03_plan.jpg)
+
+### Dry-Run Diff Preview
+
+Dry-run mode produces structured diffs before execution, including both API-facing changes and memory updates.
+
+![Dry-run diff preview](docs/screenshots/04_dry_run.jpg)
+
+### Approval Gate
+
+Execution remains gated by explicit approval prompts before actions are applied.
+
+![Approval gate](docs/screenshots/05_HITM.jpg)
+
+### Validation Output
+
+The prototype includes both local StoreOps evals and standard repository validation with `pytest` and `ruff`.
+
+![Validation output](docs/screenshots/06_tests.jpg)
+
 ## Validation
 
 Run the full test suite:
